@@ -33,7 +33,7 @@ export function usePomodoro() {
     mutationFn: async (sessionData: { name: string }) => {
       const res = await apiRequest("POST", "/api/sessions", {
         name: sessionData.name,
-        startTime: new Date().toISOString()
+        startTime: new Date() // Send Date object directly instead of ISO string
       });
       return await res.json();
     },
@@ -54,7 +54,7 @@ export function usePomodoro() {
   const updateSessionMutation = useMutation({
     mutationFn: async (data: { 
       id: number;
-      endTime?: string;
+      endTime?: Date;
       pomodorosCompleted?: number;
       totalFocusTime?: number;
       isCompleted?: boolean;
@@ -212,7 +212,7 @@ export function usePomodoro() {
     if (activeSessionRef.current) {
       updateSessionMutation.mutate({
         id: activeSessionRef.current.id,
-        endTime: new Date().toISOString(),
+        endTime: new Date(),
         pomodorosCompleted,
         totalFocusTime: elapsedTimeRef.current,
         isCompleted: false,
@@ -279,7 +279,7 @@ export function usePomodoro() {
     if (activeSessionRef.current) {
       updateSessionMutation.mutate({
         id: activeSessionRef.current.id,
-        endTime: new Date().toISOString(),
+        endTime: new Date(),
         pomodorosCompleted,
         totalFocusTime: elapsedTimeRef.current,
         isCompleted: true,
@@ -316,7 +316,7 @@ export function usePomodoro() {
     if (activeSessionRef.current) {
       updateSessionMutation.mutate({
         id: activeSessionRef.current.id,
-        endTime: new Date().toISOString(),
+        endTime: new Date(),
         pomodorosCompleted,
         totalFocusTime: elapsedTimeRef.current,
         isCompleted: false,
