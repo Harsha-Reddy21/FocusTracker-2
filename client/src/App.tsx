@@ -14,7 +14,7 @@ import SettingsPage from "@/pages/settings-page";
 import SessionHistoryPage from "@/pages/session-history-page";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider } from "./hooks/use-auth";
-import { ActiveSiteBlocker } from "@/components/active-site-blocker";
+import { FocusBlockerManager } from "@/components/focus-blocker-manager";
 
 function Router() {
   return (
@@ -40,7 +40,7 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <Router />
-            <ActiveSiteBlocker />
+            <FocusBlockerManager />
           </TooltipProvider>
         </AuthProvider>
       </QueryClientProvider>
