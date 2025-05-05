@@ -1,310 +1,278 @@
 // FocusFlow Browser Extension
-// Background Script
+// Background.js - Core blocking functionality
 
-// Default configuration
-const DEFAULT_CONFIG = {
-  blockedSites: [],
-  isActive: false,
-  apiUrl: 'https://focusflow.replit.app',
-  syncEnabled: true,
-  sessionTimeout: 25 * 60 * 1000, // 25 minutes
-  sessionStartTime: null,
-  authToken: null,
-  userId: null
-};
+// Extension state
+let isActive = false;
+let sessionStartTime = null;
+let sessionDuration = 0;
+let blockedSites = [];
+let blockPageUrl = chrome.runtime.getURL('block.html');
 
-// Current state
-let state = { ...DEFAULT_CONFIG };
+// Initialize extension when installed or updated
+chrome.runtime.onInstalled.addListener(initialize);
 
-// Initialize the extension
-async function initialize() {
-  console.log('FocusFlow Blocker: Initializing...');
-  
-  // Load saved configuration
-  const savedState = await chrome.storage.sync.get('focusFlowState');
-  if (savedState.focusFlowState) {
-    state = { ...DEFAULT_CONFIG, ...savedState.focusFlowState };
+// On startup, check if we're in an active session
+chrome.runtime.onStartup.addListener(initialize);
+
+// Listen for navigation events to check for blocked sites
+chrome.webNavigation.onBeforeNavigate.addListener(checkNavigation);
+
+// Message handlers from popup and content scripts
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'GET_STATE') {
+    sendResponse({
+      isActive,
+      sessionStartTime,
+      sessionDuration,
+      blockedSites,
+      timeRemaining: getTimeRemaining()
+    });
+    return true;
   }
   
-  // Check if there's an active session that needs to be restored
-  if (state.isActive && state.sessionStartTime) {
-    const now = Date.now();
-    const elapsed = now - state.sessionStartTime;
+  if (message.type === 'START_SESSION') {
+    startFocusSession(message.duration, message.sites)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  
+  if (message.type === 'END_SESSION') {
+    endFocusSession()
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  
+  if (message.type === 'SYNC_WITH_APP') {
+    syncWithApp(message.apiUrl)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+});
+
+// Initialize extension state
+async function initialize() {
+  try {
+    // Load saved state
+    const data = await chrome.storage.local.get([
+      'isActive', 
+      'sessionStartTime',
+      'sessionDuration',
+      'blockedSites'
+    ]);
     
-    if (elapsed < state.sessionTimeout) {
-      // Session is still valid, set alarm to end it
-      const remaining = state.sessionTimeout - elapsed;
-      chrome.alarms.create('sessionEnd', { delayInMinutes: remaining / (60 * 1000) });
+    isActive = data.isActive || false;
+    sessionStartTime = data.sessionStartTime ? new Date(data.sessionStartTime) : null;
+    sessionDuration = data.sessionDuration || 25 * 60 * 1000; // Default 25 min
+    blockedSites = data.blockedSites || [];
+    
+    // Check if the session is still valid
+    if (isActive && sessionStartTime) {
+      const now = new Date();
+      const endTime = new Date(sessionStartTime.getTime() + sessionDuration);
       
-      // Update the extension icon
-      updateExtensionStatus(true);
+      if (now > endTime) {
+        // Session has ended, reset state
+        await endFocusSession();
+      } else {
+        // Session is still active, update badge
+        updateExtensionStatus(true);
+      }
     } else {
-      // Session has expired, end it
-      await endFocusSession();
+      updateExtensionStatus(false);
     }
-  } else {
+  } catch (error) {
+    console.error('Error initializing extension:', error);
     updateExtensionStatus(false);
   }
-  
-  // Set up navigation blocking
-  chrome.webNavigation.onBeforeNavigate.addListener(checkNavigation);
-  
-  // Check for app sync if enabled
-  if (state.syncEnabled && state.authToken) {
-    syncWithApp();
-    
-    // Set up periodic sync
-    chrome.alarms.create('syncWithApp', { periodInMinutes: 1 });
-  }
-  
-  console.log('FocusFlow Blocker: Initialization complete');
 }
 
-// Update the extension's icon to reflect active/inactive state
+// Update the extension icon and badge
 function updateExtensionStatus(isActive) {
-  const iconPath = isActive ? 'images/icon-active' : 'images/icon';
+  const iconPath = isActive ? 'icons/icon48.png' : 'icons/icon48_inactive.png';
+  const badgeText = isActive ? getMinutesRemaining() : '';
+  const badgeColor = isActive ? '#4CAF50' : '#757575';
+  
+  chrome.action.setIcon({ path: iconPath });
+  chrome.action.setBadgeText({ text: badgeText });
+  chrome.action.setBadgeBackgroundColor({ color: badgeColor });
+  
+  // If active, set up a timer to update the badge countdown
+  if (isActive) {
+    setTimeout(updateBadgeTime, 60000); // Update every minute
+  }
+}
 
-  chrome.action.setIcon({
-    path: {
-      16: `${iconPath}16.png`,
-      48: `${iconPath}48.png`,
-      128: `${iconPath}128.png`
-    }
-  });
+// Update the badge time display
+function updateBadgeTime() {
+  if (!isActive) return;
   
-  chrome.action.setBadgeText({
-    text: isActive ? 'ON' : ''
-  });
+  const minutesLeft = getMinutesRemaining();
+  chrome.action.setBadgeText({ text: minutesLeft });
   
-  chrome.action.setBadgeBackgroundColor({
-    color: isActive ? '#22c55e' : '#ef4444'
-  });
+  // If time remaining, schedule another update
+  if (minutesLeft !== '0') {
+    setTimeout(updateBadgeTime, 60000);
+  } else {
+    endFocusSession();
+  }
+}
+
+// Get minutes remaining as a string
+function getMinutesRemaining() {
+  if (!sessionStartTime) return '0';
+  
+  const now = new Date();
+  const endTime = new Date(sessionStartTime.getTime() + sessionDuration);
+  const diffMs = endTime - now;
+  
+  if (diffMs <= 0) return '0';
+  
+  const diffMinutes = Math.ceil(diffMs / 60000);
+  return diffMinutes.toString();
+}
+
+// Get milliseconds remaining
+function getTimeRemaining() {
+  if (!sessionStartTime || !isActive) return 0;
+  
+  const now = new Date();
+  const endTime = new Date(sessionStartTime.getTime() + sessionDuration);
+  const diffMs = endTime - now;
+  
+  return Math.max(0, diffMs);
 }
 
 // Start a new focus session
-async function startFocusSession(duration) {
-  const sessionDuration = duration || state.sessionTimeout;
-  
-  state.isActive = true;
-  state.sessionStartTime = Date.now();
-  
-  // Save state
-  await chrome.storage.sync.set({ focusFlowState: state });
-  
-  // Set alarm to end session
-  chrome.alarms.create('sessionEnd', { delayInMinutes: sessionDuration / (60 * 1000) });
-  
-  // Update icon
-  updateExtensionStatus(true);
-  
-  // Notify content scripts
-  const tabs = await chrome.tabs.query({});
-  tabs.forEach(tab => {
-    try {
-      chrome.tabs.sendMessage(tab.id, { action: 'sessionStarted' });
-    } catch (e) {
-      // Tab might not have content script loaded
-    }
-  });
-  
-  console.log('FocusFlow Blocker: Focus session started');
-  
-  return { success: true };
+async function startFocusSession(duration, sites) {
+  try {
+    sessionStartTime = new Date();
+    sessionDuration = duration * 60 * 1000; // Convert minutes to ms
+    blockedSites = sites || blockedSites;
+    isActive = true;
+    
+    // Save state
+    await chrome.storage.local.set({
+      isActive,
+      sessionStartTime: sessionStartTime.toISOString(),
+      sessionDuration,
+      blockedSites
+    });
+    
+    updateExtensionStatus(true);
+    
+    // Notify all open tabs
+    const tabs = await chrome.tabs.query({});
+    tabs.forEach(tab => {
+      chrome.tabs.sendMessage(tab.id, { 
+        type: 'SESSION_STARTED',
+        timeRemaining: getTimeRemaining(),
+        blockedSites 
+      }).catch(() => {
+        // Tab might not have content script loaded, ignore errors
+      });
+    });
+    
+    // Set up auto-end timer
+    setTimeout(() => {
+      endFocusSession();
+    }, sessionDuration);
+    
+    return true;
+  } catch (error) {
+    console.error('Error starting focus session:', error);
+    throw error;
+  }
 }
 
 // End the current focus session
 async function endFocusSession() {
-  state.isActive = false;
-  state.sessionStartTime = null;
-  
-  // Save state
-  await chrome.storage.sync.set({ focusFlowState: state });
-  
-  // Clear the alarm
-  chrome.alarms.clear('sessionEnd');
-  
-  // Update icon
-  updateExtensionStatus(false);
-  
-  // Notify content scripts
-  const tabs = await chrome.tabs.query({});
-  tabs.forEach(tab => {
-    try {
-      chrome.tabs.sendMessage(tab.id, { action: 'sessionEnded' });
-    } catch (e) {
-      // Tab might not have content script loaded
-    }
-  });
-  
-  console.log('FocusFlow Blocker: Focus session ended');
-  
-  return { success: true };
+  try {
+    isActive = false;
+    
+    // Save state
+    await chrome.storage.local.set({
+      isActive,
+      sessionStartTime: null
+    });
+    
+    updateExtensionStatus(false);
+    
+    // Notify all open tabs
+    const tabs = await chrome.tabs.query({});
+    tabs.forEach(tab => {
+      chrome.tabs.sendMessage(tab.id, { 
+        type: 'SESSION_ENDED' 
+      }).catch(() => {
+        // Tab might not have content script loaded, ignore errors
+      });
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error ending focus session:', error);
+    throw error;
+  }
 }
 
-// Check if navigation should be blocked
+// Check navigation to see if we should block
 function checkNavigation(details) {
-  // If not in an active session, allow all navigation
-  if (!state.isActive) return;
+  if (!isActive || details.frameType !== 'outermost_frame') return;
   
-  // Check if the URL is in our block list
   const url = new URL(details.url);
   const domain = url.hostname;
   
-  const isBlocked = state.blockedSites.some(site => {
-    // Direct match
-    if (domain === site.domain) return true;
-    
-    // Subdomain match
-    if (domain.endsWith(`.${site.domain}`)) return true;
-    
-    return false;
-  });
-  
-  if (isBlocked) {
-    console.log(`FocusFlow Blocker: Blocking navigation to ${domain}`);
-    
-    // Show block page
+  // Check if this domain should be blocked
+  if (shouldBlockDomain(domain)) {
+    // Redirect to block page
     chrome.tabs.update(details.tabId, {
-      url: chrome.runtime.getURL('block.html') +
-           `?domain=${encodeURIComponent(domain)}` + 
-           `&url=${encodeURIComponent(details.url)}`
+      url: `${blockPageUrl}?domain=${encodeURIComponent(domain)}&remaining=${getTimeRemaining()}`
     });
   }
 }
 
-// Sync blocked sites and session state with the FocusFlow app
-async function syncWithApp() {
-  if (!state.authToken || !state.apiUrl) return;
+// Check if a domain should be blocked
+function shouldBlockDomain(domain) {
+  if (!domain) return false;
   
+  return blockedSites.some(site => {
+    // Remove www. prefix for comparison
+    const siteDomain = site.domain || site;
+    const normalizedSite = siteDomain.replace(/^www\./, '');
+    const normalizedDomain = domain.replace(/^www\./, '');
+    
+    // Check for exact match or subdomain match
+    return normalizedDomain === normalizedSite || 
+           normalizedDomain.endsWith('.' + normalizedSite);
+  });
+}
+
+// Sync with FocusFlow app
+async function syncWithApp(apiUrl) {
   try {
+    // Default API url if not provided
+    const baseUrl = apiUrl || 'https://focusflow.app';
+    
     // Fetch blocked sites
-    const sitesResponse = await fetch(`${state.apiUrl}/api/blocked-sites`, {
-      headers: {
-        'Authorization': `Bearer ${state.authToken}`
-      }
+    const sitesResponse = await fetch(`${baseUrl}/api/blocked-sites`, {
+      credentials: 'include'
     });
     
     if (sitesResponse.ok) {
       const sites = await sitesResponse.json();
-      state.blockedSites = sites;
+      blockedSites = sites;
       
-      // Save state
-      await chrome.storage.sync.set({ focusFlowState: state });
-    }
-    
-    // Check for active sessions
-    const sessionsResponse = await fetch(`${state.apiUrl}/api/sessions`, {
-      headers: {
-        'Authorization': `Bearer ${state.authToken}`
-      }
-    });
-    
-    if (sessionsResponse.ok) {
-      const sessions = await sessionsResponse.json();
+      // Save to storage
+      await chrome.storage.local.set({ blockedSites });
       
-      // Find active session (not completed, not interrupted, no end time)
-      const activeSession = sessions.find(session => 
-        !session.isCompleted && !session.isInterrupted && !session.endTime
-      );
-      
-      // If there's an active session in the app but not in the extension, start it
-      if (activeSession && !state.isActive) {
-        const startTime = new Date(activeSession.startTime).getTime();
-        const elapsed = Date.now() - startTime;
-        const defaultDuration = 25 * 60 * 1000; // 25 minutes in milliseconds
-        
-        if (elapsed < defaultDuration) {
-          // There's still time left in the session
-          state.sessionStartTime = startTime;
-          state.isActive = true;
-          
-          // Save state
-          await chrome.storage.sync.set({ focusFlowState: state });
-          
-          // Set alarm to end session
-          const remaining = defaultDuration - elapsed;
-          chrome.alarms.create('sessionEnd', { 
-            delayInMinutes: Math.max(0.1, remaining / (60 * 1000)) 
-          });
-          
-          // Update icon
-          updateExtensionStatus(true);
-        }
-      }
-      // If there's no active session in the app but there is in the extension, end it
-      else if (!activeSession && state.isActive) {
-        await endFocusSession();
-      }
+      return true;
+    } else {
+      throw new Error('Failed to sync with FocusFlow app');
     }
   } catch (error) {
-    console.error('FocusFlow Blocker: Error syncing with app', error);
+    console.error('Error syncing with app:', error);
+    throw error;
   }
 }
-
-// Handle alarms
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'sessionEnd') {
-    await endFocusSession();
-  } else if (alarm.name === 'syncWithApp') {
-    await syncWithApp();
-  }
-});
-
-// Handle messages from popup and content scripts
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  (async () => {
-    try {
-      if (message.action === 'getState') {
-        sendResponse({ state });
-      } else if (message.action === 'startSession') {
-        const result = await startFocusSession(message.duration);
-        sendResponse(result);
-      } else if (message.action === 'endSession') {
-        const result = await endFocusSession();
-        sendResponse(result);
-      } else if (message.action === 'updateSettings') {
-        // Update settings
-        state = { ...state, ...message.settings };
-        
-        // Save state
-        await chrome.storage.sync.set({ focusFlowState: state });
-        sendResponse({ success: true });
-      } else if (message.action === 'updateBlockedSites') {
-        // Update blocked sites
-        state.blockedSites = message.sites;
-        
-        // Save state
-        await chrome.storage.sync.set({ focusFlowState: state });
-        sendResponse({ success: true });
-      } else if (message.action === 'login') {
-        // Store auth token
-        state.authToken = message.token;
-        state.userId = message.userId;
-        
-        // Save state
-        await chrome.storage.sync.set({ focusFlowState: state });
-        
-        // Sync with app immediately
-        await syncWithApp();
-        sendResponse({ success: true });
-      } else if (message.action === 'logout') {
-        // Clear auth token
-        state.authToken = null;
-        state.userId = null;
-        
-        // Save state
-        await chrome.storage.sync.set({ focusFlowState: state });
-        sendResponse({ success: true });
-      }
-    } catch (error) {
-      console.error('Error handling message:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-  })();
-  
-  // Return true to indicate we'll respond asynchronously
-  return true;
-});
-
-// Initialize extension when loaded
-initialize();

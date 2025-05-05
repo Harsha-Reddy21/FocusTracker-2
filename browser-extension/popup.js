@@ -1,183 +1,219 @@
-// FocusFlow Browser Extension
-// Popup Script
-
 // DOM elements
 const statusIcon = document.getElementById('status-icon');
 const statusText = document.getElementById('status-text');
-const timerContainer = document.getElementById('timer-container');
-const timeRemaining = document.getElementById('time-remaining');
-const sitesList = document.getElementById('sites-list');
-const sitesCount = document.getElementById('sites-count');
-const inactiveControls = document.getElementById('inactive-controls');
-const activeControls = document.getElementById('active-controls');
+const statusMessage = document.getElementById('status-message');
+const sessionActive = document.getElementById('session-active');
+const sessionInactive = document.getElementById('session-inactive');
+const timer = document.getElementById('timer');
 const startSessionButton = document.getElementById('start-session-button');
 const endSessionButton = document.getElementById('end-session-button');
-const manageSitesButton = document.getElementById('manage-sites-button');
-const goToAppButton = document.getElementById('go-to-app-button');
-const authSection = document.getElementById('auth-section');
-const authAvatar = document.getElementById('auth-avatar');
-const authUsername = document.getElementById('auth-username');
-const settingsButton = document.getElementById('settings-button');
+const syncButton = document.getElementById('sync-button');
+const hoursInput = document.getElementById('session-hours');
+const minutesInput = document.getElementById('session-minutes');
+const blockedSitesList = document.getElementById('blocked-sites-list');
+const blockedSitesListInactive = document.getElementById('blocked-sites-list-inactive');
 
-// Global state
-let state = {};
+// State
+let isActive = false;
+let sessionStartTime = null;
+let sessionDuration = 0;
+let blockedSites = [];
+let timeRemaining = 0;
 let timerInterval = null;
 
-// Initialize the popup
-async function initialize() {
-  // Get the current state from the background script
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getState' });
-    if (response && response.state) {
-      state = response.state;
-      updateUI();
-    }
-  } catch (error) {
-    console.error('Error initializing popup:', error);
-  }
+// Initialize
+function initialize() {
+  // Get state from background script
+  chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response) => {
+    updateState(response);
+    updateUI();
+  });
+  
+  // Add event listeners
+  startSessionButton.addEventListener('click', startSession);
+  endSessionButton.addEventListener('click', endSession);
+  syncButton.addEventListener('click', syncWithApp);
 }
 
-// Update the UI based on the current state
+// Update state based on background script response
+function updateState(state) {
+  if (!state) return;
+  
+  isActive = state.isActive;
+  sessionStartTime = state.sessionStartTime ? new Date(state.sessionStartTime) : null;
+  sessionDuration = state.sessionDuration || 0;
+  blockedSites = state.blockedSites || [];
+  timeRemaining = state.timeRemaining || 0;
+}
+
+// Update UI based on current state
 function updateUI() {
-  // Update status
-  if (state.isActive) {
+  if (isActive) {
+    // Active session UI
     statusIcon.classList.remove('inactive');
     statusIcon.classList.add('active');
-    statusText.textContent = 'Focus Mode Active';
-    inactiveControls.style.display = 'none';
-    activeControls.style.display = 'flex';
-    timerContainer.style.display = 'block';
+    statusText.textContent = 'Focus Mode: Active';
+    statusMessage.textContent = 'Distracting websites are currently blocked';
     
-    // Update timer
-    if (state.sessionStartTime) {
-      updateTimer();
-      // Start timer interval
-      if (timerInterval) clearInterval(timerInterval);
-      timerInterval = setInterval(updateTimer, 1000);
-    }
+    sessionActive.classList.add('visible');
+    sessionInactive.classList.remove('visible');
+    
+    // Start timer updates
+    updateTimer();
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(updateTimer, 1000);
   } else {
+    // Inactive session UI
     statusIcon.classList.remove('active');
     statusIcon.classList.add('inactive');
-    statusText.textContent = 'Focus Mode Inactive';
-    inactiveControls.style.display = 'flex';
-    activeControls.style.display = 'none';
-    timerContainer.style.display = 'none';
+    statusText.textContent = 'Focus Mode: Inactive';
+    statusMessage.textContent = 'Start a focus session to block distractions';
     
-    // Clear timer interval
+    sessionActive.classList.remove('visible');
+    sessionInactive.classList.add('visible');
+    
+    // Stop timer updates
     if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
     }
   }
   
-  // Update blocked sites
+  // Update blocked sites lists
   updateBlockedSites();
-  
-  // Update auth section
-  if (state.authToken && state.userId) {
-    authSection.style.display = 'block';
-    if (state.username) {
-      authUsername.textContent = state.username;
-      authAvatar.textContent = state.username.charAt(0).toUpperCase();
-    }
-  } else {
-    authSection.style.display = 'none';
-  }
-  
-  // Set links
-  const appUrl = state.apiUrl || 'https://focusflow.replit.app';
-  goToAppButton.href = appUrl;
-  manageSitesButton.href = `${appUrl}/blocklist`;
 }
 
-// Update the timer display
+// Update timer display
 function updateTimer() {
-  if (!state.sessionStartTime) return;
-  
-  const now = Date.now();
-  const startTime = state.sessionStartTime;
-  const sessionLength = state.sessionTimeout;
-  const elapsed = now - startTime;
-  const remaining = Math.max(0, sessionLength - elapsed);
-  
-  const minutes = Math.floor(remaining / (60 * 1000));
-  const seconds = Math.floor((remaining % (60 * 1000)) / 1000);
-  
-  timeRemaining.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  
-  // If timer has expired, refresh the state
-  if (remaining <= 0) {
-    initialize();
-  }
-}
-
-// Update the blocked sites list
-function updateBlockedSites() {
-  // Clear existing items
-  sitesList.innerHTML = '';
-  
-  // If no blocked sites, show a message
-  if (!state.blockedSites || state.blockedSites.length === 0) {
-    const emptyMessage = document.createElement('div');
-    emptyMessage.textContent = 'No sites blocked yet. Add sites in the FocusFlow app.';
-    emptyMessage.style.fontSize = '0.75rem';
-    emptyMessage.style.color = 'var(--muted)';
-    emptyMessage.style.padding = '0.25rem';
-    sitesList.appendChild(emptyMessage);
-    sitesCount.textContent = '0';
+  if (!isActive || timeRemaining <= 0) {
+    timer.textContent = '00:00:00';
     return;
   }
   
-  // Add each blocked site
-  state.blockedSites.forEach(site => {
-    const siteTag = document.createElement('div');
-    siteTag.className = 'site-tag';
-    siteTag.textContent = site.domain;
-    sitesList.appendChild(siteTag);
-  });
+  // Decrease time remaining
+  timeRemaining = Math.max(0, timeRemaining - 1000);
   
-  // Update count
-  sitesCount.textContent = state.blockedSites.length.toString();
+  // Calculate hours, minutes, seconds
+  const hours = Math.floor(timeRemaining / 3600000);
+  const minutes = Math.floor((timeRemaining % 3600000) / 60000);
+  const seconds = Math.floor((timeRemaining % 60000) / 1000);
+  
+  // Format the time
+  const formattedTime = 
+    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  
+  // Update the timer display
+  timer.textContent = formattedTime;
+  
+  // If time is up, refresh state
+  if (timeRemaining <= 0) {
+    chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response) => {
+      updateState(response);
+      updateUI();
+    });
+  }
 }
 
-// Event listeners
-startSessionButton.addEventListener('click', async () => {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'startSession' });
-    if (response && response.success) {
-      // Refresh state
-      initialize();
-    }
-  } catch (error) {
-    console.error('Error starting session:', error);
+// Update blocked sites lists
+function updateBlockedSites() {
+  // Clear current lists
+  blockedSitesList.innerHTML = '';
+  blockedSitesListInactive.innerHTML = '';
+  
+  if (blockedSites.length === 0) {
+    // No sites blocked
+    const noSitesMsg = document.createElement('li');
+    noSitesMsg.className = 'blocked-site';
+    noSitesMsg.textContent = 'No sites blocked yet';
+    noSitesMsg.style.fontStyle = 'italic';
+    noSitesMsg.style.color = '#94a3b8';
+    
+    blockedSitesList.appendChild(noSitesMsg.cloneNode(true));
+    blockedSitesListInactive.appendChild(noSitesMsg);
+    return;
   }
-});
+  
+  // Add each site to both lists
+  blockedSites.forEach(site => {
+    const domain = site.domain || site;
+    
+    // For active session list
+    const activeLi = document.createElement('li');
+    activeLi.className = 'blocked-site';
+    activeLi.innerHTML = `<div class="blocked-site-domain">${domain}</div>`;
+    blockedSitesList.appendChild(activeLi);
+    
+    // For inactive session list
+    const inactiveLi = document.createElement('li');
+    inactiveLi.className = 'blocked-site';
+    inactiveLi.innerHTML = `<div class="blocked-site-domain">${domain}</div>`;
+    blockedSitesListInactive.appendChild(inactiveLi);
+  });
+}
 
-endSessionButton.addEventListener('click', async () => {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'endSession' });
-    if (response && response.success) {
-      // Refresh state
-      initialize();
-    }
-  } catch (error) {
-    console.error('Error ending session:', error);
+// Start a new focus session
+function startSession() {
+  const hours = parseInt(hoursInput.value) || 0;
+  const minutes = parseInt(minutesInput.value) || 25;
+  
+  // Calculate total duration in minutes
+  const durationMinutes = (hours * 60) + minutes;
+  
+  if (durationMinutes < 1) {
+    alert('Please set a valid duration (at least 1 minute)');
+    return;
   }
-});
+  
+  chrome.runtime.sendMessage({
+    type: 'START_SESSION',
+    duration: durationMinutes,
+    sites: blockedSites
+  }, (response) => {
+    if (response && response.success) {
+      // Session started successfully
+      chrome.runtime.sendMessage({ type: 'GET_STATE' }, (stateResponse) => {
+        updateState(stateResponse);
+        updateUI();
+      });
+    } else {
+      // Error starting session
+      alert('Failed to start focus session: ' + (response.error || 'Unknown error'));
+    }
+  });
+}
 
-// Settings button opens a new tab to the settings page
-settingsButton.addEventListener('click', () => {
-  const appUrl = state.apiUrl || 'https://focusflow.replit.app';
-  chrome.tabs.create({ url: `${appUrl}/settings` });
-});
+// End the current focus session
+function endSession() {
+  chrome.runtime.sendMessage({ type: 'END_SESSION' }, (response) => {
+    if (response && response.success) {
+      // Session ended successfully
+      chrome.runtime.sendMessage({ type: 'GET_STATE' }, (stateResponse) => {
+        updateState(stateResponse);
+        updateUI();
+      });
+    } else {
+      // Error ending session
+      alert('Failed to end focus session: ' + (response.error || 'Unknown error'));
+    }
+  });
+}
 
-// Initialize on load
+// Sync with FocusFlow web app
+function syncWithApp() {
+  chrome.runtime.sendMessage({ type: 'SYNC_WITH_APP' }, (response) => {
+    if (response && response.success) {
+      // Sync successful
+      chrome.runtime.sendMessage({ type: 'GET_STATE' }, (stateResponse) => {
+        updateState(stateResponse);
+        updateUI();
+        alert('Successfully synced with FocusFlow app');
+      });
+    } else {
+      // Error syncing
+      alert('Failed to sync with FocusFlow app. Please ensure you are logged in to the web app.');
+    }
+  });
+}
+
+// Initialize when the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', initialize);
-
-// Clean up on unload
-window.addEventListener('unload', () => {
-  if (timerInterval) {
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
-});

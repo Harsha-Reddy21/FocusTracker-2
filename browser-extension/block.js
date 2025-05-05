@@ -1,88 +1,59 @@
-// JavaScript for the block page
+// Get DOM elements
+const domainElement = document.getElementById('domain');
+const timerElement = document.getElementById('timer');
+const returnButton = document.getElementById('return-button');
+const abortButton = document.getElementById('abort-button');
 
 // Get URL parameters
 const urlParams = new URLSearchParams(window.location.search);
-const blockedDomain = urlParams.get('domain');
-const originalUrl = urlParams.get('url');
+const blockedDomain = urlParams.get('domain') || 'this website';
+const remainingTime = parseInt(urlParams.get('remaining') || '0');
 
-// References to DOM elements
-const domainNameElement = document.getElementById('domain-name');
-const timeRemainingElement = document.getElementById('time-remaining');
-const goBackButton = document.getElementById('go-back-button');
-const goToFocusFlowButton = document.getElementById('go-to-focusflow');
-const endSessionButton = document.getElementById('end-session-button');
+// Set the blocked domain
+domainElement.textContent = blockedDomain;
 
-// Set the domain name in the UI
-if (blockedDomain) {
-  domainNameElement.textContent = blockedDomain;
-  document.title = `${blockedDomain} - Site Blocked`;
-}
+// Set up the timer
+let timeRemaining = remainingTime;
+updateTimer();
 
-// Get current session state
-chrome.runtime.sendMessage({ action: 'getState' }, response => {
-  if (response && response.state) {
-    const state = response.state;
-    
-    // Set up timer if there's an active session
-    if (state.isActive && state.sessionStartTime) {
-      updateTimer(state.sessionStartTime, state.sessionTimeout);
-      
-      // Set up interval to update the timer
-      setInterval(() => {
-        updateTimer(state.sessionStartTime, state.sessionTimeout);
-      }, 1000);
-    } else {
-      // No active session, show zeros
-      timeRemainingElement.textContent = '00:00';
-    }
-  }
-});
+// Update the timer every second
+const timerInterval = setInterval(updateTimer, 1000);
 
-// Update the timer display
-function updateTimer(startTimeMs, sessionLengthMs) {
-  const now = Date.now();
-  const elapsed = now - startTimeMs;
-  const remaining = Math.max(0, sessionLengthMs - elapsed);
-  
-  const minutes = Math.floor(remaining / (60 * 1000));
-  const seconds = Math.floor((remaining % (60 * 1000)) / 1000);
-  
-  timeRemainingElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  
-  // If timer has expired, refresh the page to potentially allow access
-  if (remaining <= 0 && originalUrl) {
-    window.location.href = originalUrl;
-  }
-}
-
-// Set up button click handlers
-goBackButton.addEventListener('click', () => {
+// Add event listeners to buttons
+returnButton.addEventListener('click', () => {
   window.history.back();
 });
 
-goToFocusFlowButton.addEventListener('click', () => {
-  // Navigate to the FocusFlow app
-  chrome.runtime.sendMessage({ action: 'getState' }, response => {
-    if (response && response.state && response.state.apiUrl) {
-      window.location.href = response.state.apiUrl;
-    } else {
-      // Fallback to default URL if not configured
-      window.location.href = 'https://focusflow.replit.app';
+abortButton.addEventListener('click', () => {
+  // Send message to background script to end session
+  chrome.runtime.sendMessage({ type: 'END_SESSION' }, (response) => {
+    if (response && response.success) {
+      // Redirect to a safe page, like the Chrome new tab page
+      window.location.href = 'chrome://newtab';
     }
   });
 });
 
-endSessionButton.addEventListener('click', () => {
-  // End the focus session
-  chrome.runtime.sendMessage({ action: 'endSession' }, response => {
-    if (response && response.success) {
-      // Session ended, redirect to original URL if available
-      if (originalUrl) {
-        window.location.href = originalUrl;
-      } else {
-        // Otherwise, go back
-        window.history.back();
-      }
-    }
-  });
-});
+// Update the timer display
+function updateTimer() {
+  if (timeRemaining <= 0) {
+    timerElement.textContent = '00:00:00';
+    clearInterval(timerInterval);
+    return;
+  }
+  
+  // Decrease by 1 second
+  timeRemaining -= 1000;
+  
+  // Calculate hours, minutes, seconds
+  const hours = Math.floor(timeRemaining / 3600000);
+  const minutes = Math.floor((timeRemaining % 3600000) / 60000);
+  const seconds = Math.floor((timeRemaining % 60000) / 1000);
+  
+  // Format the time
+  const formattedTime = 
+    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  
+  // Update the timer display
+  timerElement.textContent = formattedTime;
+}

@@ -8,9 +8,7 @@ import { cn } from "@/lib/utils";
 export default function BrowserExtensionPage() {
   // Download handler
   const handleDownload = () => {
-    // ZIP the browser-extension folder and download it
-    // This would typically be handled by server-side code
-    alert("Extension download would be triggered here!");
+    window.location.href = '/api/extension/download';
   };
   
   return (

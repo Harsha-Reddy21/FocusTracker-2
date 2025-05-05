@@ -1,334 +1,291 @@
 // FocusFlow Browser Extension
-// Content Script - Runs on every page
+// Content.js - Content script injected into web pages
 
-// Set up messaging with background script
-let isSessionActive = false;
-let focusReminderElement = null;
+// Initialize state
+let isActive = false;
+let timeRemaining = 0;
+let reminderContainer = null;
+let updateInterval = null;
 
-// Initialize content script
-function initialize() {
-  console.log('FocusFlow Blocker: Content script initialized');
-  
-  // Check current session status
-  chrome.runtime.sendMessage({ action: 'getState' }, response => {
-    if (response && response.state) {
-      isSessionActive = response.state.isActive;
-      
-      if (isSessionActive) {
-        showFocusReminder();
-      }
-    }
-  });
-  
-  // Listen for messages from background script
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'sessionStarted') {
-      isSessionActive = true;
-      showFocusReminder();
-    } else if (message.action === 'sessionEnded') {
-      isSessionActive = false;
-      hideFocusReminder();
-    }
+// Check if current URL is in the blocked list
+// This is a backup check since background.js should already redirect
+const checkIfBlocked = async () => {
+  try {
+    const state = await getExtensionState();
     
-    // Send acknowledgment
-    sendResponse({ received: true });
-    return true; // Keep the message channel open for async response
-  });
-}
-
-// Show a small focus reminder in the corner of the page
-function showFocusReminder() {
-  // If already showing, don't create another
-  if (focusReminderElement) return;
-  
-  // Create the reminder element
-  focusReminderElement = document.createElement('div');
-  focusReminderElement.id = 'focusflow-reminder';
-  focusReminderElement.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background-color: #111827;
-    color: white;
-    padding: 12px 16px;
-    border-radius: 8px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 14px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 2147483647;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: all 0.3s ease;
-    cursor: pointer;
-  `;
-  
-  // Create the icon
-  const icon = document.createElement('div');
-  icon.style.cssText = `
-    width: 10px;
-    height: 10px;
-    background-color: #22c55e;
-    border-radius: 50%;
-  `;
-  
-  // Create the text
-  const text = document.createElement('span');
-  text.textContent = 'Focus Mode Active';
-  
-  // Assemble the reminder
-  focusReminderElement.appendChild(icon);
-  focusReminderElement.appendChild(text);
-  
-  // Add hover effect
-  focusReminderElement.addEventListener('mouseenter', () => {
-    focusReminderElement.style.transform = 'scale(1.05)';
-    focusReminderElement.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
-  });
-  
-  focusReminderElement.addEventListener('mouseleave', () => {
-    focusReminderElement.style.transform = 'scale(1)';
-    focusReminderElement.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
-  });
-  
-  // Add click handler to expand
-  let isExpanded = false;
-  focusReminderElement.addEventListener('click', () => {
-    if (isExpanded) {
-      // Collapse
-      focusReminderElement.style.width = 'auto';
-      focusReminderElement.style.height = 'auto';
+    if (state.isActive) {
+      const url = new URL(window.location.href);
+      const domain = url.hostname;
       
-      // Remove the content except the icon and text
-      while (focusReminderElement.childNodes.length > 2) {
-        focusReminderElement.removeChild(focusReminderElement.lastChild);
+      // Check if this domain should be blocked
+      if (shouldBlockDomain(domain, state.blockedSites)) {
+        // Redirect to block page
+        window.location.href = chrome.runtime.getURL(
+          `block.html?domain=${encodeURIComponent(domain)}&remaining=${state.timeRemaining}`
+        );
       }
-      
-      isExpanded = false;
-    } else {
-      // Expand
-      expandFocusReminder();
-      isExpanded = true;
     }
-  });
-  
-  // Add to page
-  document.body.appendChild(focusReminderElement);
-}
+  } catch (error) {
+    console.error('Error checking if blocked:', error);
+  }
+};
 
-// Expand the focus reminder to show more details
-function expandFocusReminder() {
-  if (!focusReminderElement) return;
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'SESSION_STARTED') {
+    isActive = true;
+    timeRemaining = message.timeRemaining;
+    showFocusReminder();
+    sendResponse({ success: true });
+  }
   
-  // Set expanded styles
-  focusReminderElement.style.width = '300px';
-  focusReminderElement.style.height = 'auto';
-  focusReminderElement.style.padding = '16px';
-  focusReminderElement.style.cursor = 'default';
-  
-  // Clear existing content
-  focusReminderElement.innerHTML = '';
-  
-  // Create header
-  const header = document.createElement('div');
-  header.style.cssText = `
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    width: 100%;
-  `;
-  
-  const title = document.createElement('div');
-  title.style.cssText = `
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  `;
-  
-  const icon = document.createElement('div');
-  icon.style.cssText = `
-    width: 10px;
-    height: 10px;
-    background-color: #22c55e;
-    border-radius: 50%;
-  `;
-  
-  const titleText = document.createElement('span');
-  titleText.textContent = 'Focus Mode Active';
-  
-  title.appendChild(icon);
-  title.appendChild(titleText);
-  
-  const closeButton = document.createElement('button');
-  closeButton.textContent = '✕';
-  closeButton.style.cssText = `
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    padding: 4px;
-    font-size: 14px;
-  `;
-  
-  closeButton.addEventListener('click', (e) => {
-    e.stopPropagation();
+  if (message.type === 'SESSION_ENDED') {
+    isActive = false;
     hideFocusReminder();
-  });
+    sendResponse({ success: true });
+  }
   
-  header.appendChild(title);
-  header.appendChild(closeButton);
-  
-  // Create content
-  const content = document.createElement('div');
-  content.style.cssText = `
-    margin-bottom: 12px;
-  `;
-  
-  // Get session info
-  chrome.runtime.sendMessage({ action: 'getState' }, response => {
-    if (response && response.state) {
-      const state = response.state;
-      
-      if (state.sessionStartTime) {
-        const startTime = new Date(state.sessionStartTime);
-        const elapsed = Date.now() - startTime.getTime();
-        const sessionLengthMs = state.sessionTimeout;
-        const remaining = Math.max(0, sessionLengthMs - elapsed);
-        
-        const minutes = Math.floor(remaining / (60 * 1000));
-        const seconds = Math.floor((remaining % (60 * 1000)) / 1000);
-        
-        const timeRemaining = document.createElement('div');
-        timeRemaining.style.cssText = `
-          background-color: rgba(255, 255, 255, 0.1);
-          padding: 10px;
-          border-radius: 6px;
-          text-align: center;
-          margin-bottom: 12px;
-        `;
-        
-        timeRemaining.innerHTML = `
-          <div style="font-size: 12px; margin-bottom: 4px; color: rgba(255, 255, 255, 0.7);">
-            Time remaining
-          </div>
-          <div style="font-size: 24px; font-weight: 600; font-family: monospace;">
-            ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}
-          </div>
-        `;
-        
-        content.appendChild(timeRemaining);
+  return true;
+});
+
+// Get current extension state
+async function getExtensionState() {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        resolve(response);
       }
-      
-      // Show blocked sites
-      if (state.blockedSites && state.blockedSites.length > 0) {
-        const blockedSitesContainer = document.createElement('div');
-        blockedSitesContainer.style.cssText = `
-          margin-top: 12px;
-        `;
-        
-        const blockedSitesTitle = document.createElement('div');
-        blockedSitesTitle.textContent = 'Currently blocking:';
-        blockedSitesTitle.style.cssText = `
-          font-size: 12px;
-          color: rgba(255, 255, 255, 0.7);
-          margin-bottom: 8px;
-        `;
-        
-        const blockedSitesList = document.createElement('div');
-        blockedSitesList.style.cssText = `
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-        `;
-        
-        state.blockedSites.forEach(site => {
-          const siteTag = document.createElement('span');
-          siteTag.textContent = site.domain;
-          siteTag.style.cssText = `
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-          `;
-          
-          blockedSitesList.appendChild(siteTag);
-        });
-        
-        blockedSitesContainer.appendChild(blockedSitesTitle);
-        blockedSitesContainer.appendChild(blockedSitesList);
-        content.appendChild(blockedSitesContainer);
-      }
-    }
-  });
-  
-  // Create buttons
-  const buttons = document.createElement('div');
-  buttons.style.cssText = `
-    display: flex;
-    gap: 8px;
-  `;
-  
-  const endSessionButton = document.createElement('button');
-  endSessionButton.textContent = 'End Session';
-  endSessionButton.style.cssText = `
-    background-color: #ef4444;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    flex: 1;
-    font-size: 14px;
-  `;
-  
-  endSessionButton.addEventListener('click', (e) => {
-    e.stopPropagation();
-    chrome.runtime.sendMessage({ action: 'endSession' }, () => {
-      hideFocusReminder();
     });
   });
+}
+
+// Check if a domain should be blocked
+function shouldBlockDomain(domain, blockedSites) {
+  if (!domain || !blockedSites || blockedSites.length === 0) return false;
   
-  const minimizeButton = document.createElement('button');
-  minimizeButton.textContent = 'Minimize';
-  minimizeButton.style.cssText = `
-    background-color: rgba(255, 255, 255, 0.1);
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    flex: 1;
-    font-size: 14px;
+  return blockedSites.some(site => {
+    // Remove www. prefix for comparison
+    const siteDomain = site.domain || site;
+    const normalizedSite = siteDomain.replace(/^www\./, '');
+    const normalizedDomain = domain.replace(/^www\./, '');
+    
+    // Check for exact match or subdomain match
+    return normalizedDomain === normalizedSite || 
+           normalizedDomain.endsWith('.' + normalizedSite);
+  });
+}
+
+// Initialize on page load
+function initialize() {
+  // Check if current URL should be blocked
+  checkIfBlocked();
+  
+  // Check if there's an active session
+  getExtensionState().then(state => {
+    isActive = state.isActive;
+    timeRemaining = state.timeRemaining;
+    
+    if (isActive) {
+      showFocusReminder();
+    }
+  }).catch(error => {
+    console.error('Error initializing content script:', error);
+  });
+}
+
+// Create and show the focus reminder
+function showFocusReminder() {
+  if (reminderContainer) return;
+  
+  // Create the focus reminder element
+  reminderContainer = document.createElement('div');
+  reminderContainer.className = 'focusflow-reminder';
+  reminderContainer.innerHTML = `
+    <div class="focusflow-reminder-content">
+      <div class="focusflow-reminder-icon">⏱️</div>
+      <div class="focusflow-reminder-text">Focus Mode Active</div>
+      <div class="focusflow-reminder-time" id="focusflow-time-remaining"></div>
+    </div>
+    <div class="focusflow-reminder-expand" id="focusflow-expand">↓</div>
   `;
   
-  minimizeButton.addEventListener('click', (e) => {
-    e.stopPropagation();
-    // Collapse
-    hideFocusReminder();
-    showFocusReminder();
+  // Add styles
+  const style = document.createElement('style');
+  style.textContent = `
+    .focusflow-reminder {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background-color: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      z-index: 9999999;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+    .focusflow-reminder-content {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .focusflow-reminder-icon {
+      font-size: 14px;
+    }
+    .focusflow-reminder-text {
+      font-weight: 500;
+    }
+    .focusflow-reminder-time {
+      font-weight: bold;
+    }
+    .focusflow-reminder-expand {
+      text-align: center;
+      margin-top: 4px;
+      font-size: 10px;
+      opacity: 0.7;
+      transition: all 0.2s ease;
+    }
+    .focusflow-reminder-expand:hover {
+      opacity: 1;
+    }
+    .focusflow-reminder-expanded {
+      padding: 12px 16px;
+    }
+    .focusflow-reminder-details {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .focusflow-reminder-button {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 8px;
+      background-color: #e74c3c;
+      color: white;
+      border-radius: 4px;
+      text-align: center;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .focusflow-reminder-button:hover {
+      background-color: #c0392b;
+    }
+  `;
+  
+  document.head.appendChild(style);
+  document.body.appendChild(reminderContainer);
+  
+  // Update the time display
+  updateTimeDisplay();
+  
+  // Set an interval to update the time remaining
+  updateInterval = setInterval(updateTimeDisplay, 1000);
+  
+  // Add click event to expand/collapse
+  const expandButton = document.getElementById('focusflow-expand');
+  if (expandButton) {
+    expandButton.addEventListener('click', expandFocusReminder);
+  }
+  
+  // Make the whole reminder clickable to expand
+  reminderContainer.addEventListener('click', function(e) {
+    if (e.target.id !== 'focusflow-end-session') {
+      expandFocusReminder();
+    }
   });
+}
+
+// Expand the focus reminder to show details
+function expandFocusReminder() {
+  if (!reminderContainer) return;
   
-  buttons.appendChild(minimizeButton);
-  buttons.appendChild(endSessionButton);
+  const isExpanded = reminderContainer.classList.contains('focusflow-reminder-expanded');
   
-  // Assemble the expanded reminder
-  focusReminderElement.appendChild(header);
-  focusReminderElement.appendChild(content);
-  focusReminderElement.appendChild(buttons);
+  if (isExpanded) {
+    // Collapse
+    reminderContainer.classList.remove('focusflow-reminder-expanded');
+    document.getElementById('focusflow-expand').innerHTML = '↓';
+    
+    // Remove details section if it exists
+    const details = document.querySelector('.focusflow-reminder-details');
+    if (details) {
+      details.remove();
+    }
+  } else {
+    // Expand
+    reminderContainer.classList.add('focusflow-reminder-expanded');
+    document.getElementById('focusflow-expand').innerHTML = '↑';
+    
+    // Create and add details section
+    const details = document.createElement('div');
+    details.className = 'focusflow-reminder-details';
+    details.innerHTML = `
+      <div>Stay focused! The FocusFlow extension is helping you avoid distractions.</div>
+      <div id="focusflow-end-session" class="focusflow-reminder-button">End Focus Session</div>
+    `;
+    
+    reminderContainer.appendChild(details);
+    
+    // Add click event to end session button
+    document.getElementById('focusflow-end-session').addEventListener('click', (e) => {
+      e.stopPropagation();
+      chrome.runtime.sendMessage({ type: 'END_SESSION' }, (response) => {
+        if (response.success) {
+          hideFocusReminder();
+        }
+      });
+    });
+  }
 }
 
 // Hide the focus reminder
 function hideFocusReminder() {
-  if (focusReminderElement && focusReminderElement.parentNode) {
-    focusReminderElement.parentNode.removeChild(focusReminderElement);
-    focusReminderElement = null;
+  if (reminderContainer) {
+    reminderContainer.remove();
+    reminderContainer = null;
+  }
+  
+  if (updateInterval) {
+    clearInterval(updateInterval);
+    updateInterval = null;
   }
 }
 
-// Wait for the page to load before initializing
+// Update the time display in the reminder
+function updateTimeDisplay() {
+  const timeElement = document.getElementById('focusflow-time-remaining');
+  if (!timeElement) return;
+  
+  // Calculate time remaining
+  if (timeRemaining <= 0) {
+    timeElement.textContent = '00:00';
+    return;
+  }
+  
+  // Decrease time remaining
+  timeRemaining = Math.max(0, timeRemaining - 1000);
+  
+  // Format as MM:SS
+  const minutes = Math.floor(timeRemaining / 60000);
+  const seconds = Math.floor((timeRemaining % 60000) / 1000);
+  
+  timeElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  
+  // If time is up, hide the reminder
+  if (timeRemaining <= 0) {
+    hideFocusReminder();
+  }
+}
+
+// Initialize when the DOM is fully loaded
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initialize);
 } else {
