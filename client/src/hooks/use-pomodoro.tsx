@@ -33,7 +33,7 @@ export function usePomodoro() {
     mutationFn: async (sessionData: { name: string }) => {
       const res = await apiRequest("POST", "/api/sessions", {
         name: sessionData.name,
-        startTime: new Date() // Send Date object directly instead of ISO string
+        startTime: new Date().toISOString() // Send ISO string for better serialization
       });
       return await res.json();
     },
@@ -54,7 +54,7 @@ export function usePomodoro() {
   const updateSessionMutation = useMutation({
     mutationFn: async (data: { 
       id: number;
-      endTime?: Date;
+      endTime?: Date | string;
       pomodorosCompleted?: number;
       totalFocusTime?: number;
       isCompleted?: boolean;
@@ -62,6 +62,12 @@ export function usePomodoro() {
       interruptionReason?: string;
     }) => {
       const { id, ...updateData } = data;
+      
+      // Convert Date to ISO string if it exists
+      if (updateData.endTime && updateData.endTime instanceof Date) {
+        updateData.endTime = updateData.endTime.toISOString();
+      }
+      
       const res = await apiRequest("PUT", `/api/sessions/${id}`, updateData);
       return await res.json();
     },

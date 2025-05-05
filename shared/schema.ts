@@ -69,19 +69,21 @@ export const sessions = pgTable("sessions", {
   interruptionReason: text("interruption_reason"),
 });
 
-export const insertSessionSchema = createInsertSchema(sessions).pick({
-  userId: true,
-  name: true,
-  startTime: true,
+// Create a custom session insert schema with specific validation for dates
+export const insertSessionSchema = z.object({
+  userId: z.number(),
+  name: z.string(),
+  startTime: z.union([z.date(), z.string().datetime()]), // Accept both Date objects and ISO strings
 });
 
-export const updateSessionSchema = createInsertSchema(sessions).pick({
-  endTime: true,
-  pomodorosCompleted: true,
-  totalFocusTime: true, 
-  isCompleted: true,
-  isInterrupted: true,
-  interruptionReason: true,
+// Create a custom session update schema with specific validation for dates
+export const updateSessionSchema = z.object({
+  endTime: z.union([z.date(), z.string().datetime()]).optional(),
+  pomodorosCompleted: z.number().optional(),
+  totalFocusTime: z.number().optional(),
+  isCompleted: z.boolean().optional(),
+  isInterrupted: z.boolean().optional(),
+  interruptionReason: z.string().optional(),
 });
 
 export type User = typeof users.$inferSelect;
