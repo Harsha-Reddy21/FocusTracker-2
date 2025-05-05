@@ -14,7 +14,8 @@ import SettingsPage from "@/pages/settings-page";
 import SessionHistoryPage from "@/pages/session-history-page";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider } from "./hooks/use-auth";
-import { SiteBlockedOverlay } from "@/components/site-blocked-overlay";
+import { BlockPage } from "@/components/block-page";
+import { PomodoroBlockingProvider, usePomodoroBlocking } from "@/components/pomodoro-provider";
 
 function Router() {
   return (
@@ -31,109 +32,108 @@ function Router() {
 }
 
 function WebsiteBlocker() {
-  const [showBlockOverlay, setShowBlockOverlay] = useState(false);
-  const [blockedDomains, setBlockedDomains] = useState<string[]>([]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isActiveSession, setIsActiveSession] = useState(false);
+  const [showBlockPage, setShowBlockPage] = useState(false);
+  const { isBlockingActive, blockedSites } = usePomodoroBlocking();
   
-  // When the user is authenticated, fetch their blocked sites and active session status
+  // Listen for tab visibility changes to check for blocked sites when returning to tab
   useEffect(() => {
-    async function checkAuth() {
-      try {
-        const res = await fetch('/api/user');
-        if (res.ok) {
-          setIsAuthenticated(true);
-          
-          // Fetch blocked domains
-          const blockedRes = await fetch('/api/blocked-sites');
-          if (blockedRes.ok) {
-            const sites = await blockedRes.json();
-            setBlockedDomains(sites.map((site: any) => site.domain.toLowerCase()));
-          }
-          
-          // Check if there's an active session
-          const sessionsRes = await fetch('/api/sessions');
-          if (sessionsRes.ok) {
-            const sessions = await sessionsRes.json();
-            const activeSession = sessions.find((session: any) => 
-              !session.isCompleted && !session.isInterrupted && !session.endTime
-            );
-            setIsActiveSession(!!activeSession);
-          }
-        } else {
-          setIsAuthenticated(false);
-        }
-      } catch (error) {
-        console.error("Error checking authentication:", error);
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible" && isBlockingActive) {
+        // If user returns to a tab with active focus session,
+        // check if current domain is blocked
+        checkIfCurrentSiteBlocked();
       }
     }
     
-    checkAuth();
-    
-    // Poll every 30 seconds to update status
-    const intervalId = setInterval(checkAuth, 30000);
-    return () => clearInterval(intervalId);
-  }, []);
-  
-  // Check if current site is blocked when domains or session status changes
-  useEffect(() => {
-    if (!isAuthenticated || !isActiveSession || blockedDomains.length === 0) {
-      return;
-    }
-    
-    const currentDomain = window.location.hostname.toLowerCase();
-    
-    const isBlocked = blockedDomains.some(domain => {
-      // Exact match or subdomain check
-      return currentDomain === domain || currentDomain.endsWith(`.${domain}`);
-    });
-    
-    if (isBlocked) {
-      setShowBlockOverlay(true);
-    }
-  }, [isAuthenticated, isActiveSession, blockedDomains]);
-  
-  // Add event listener to block navigation to blocked sites
-  useEffect(() => {
-    if (!isAuthenticated || !isActiveSession || blockedDomains.length === 0) {
-      return;
-    }
-    
-    function blockNavigation(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      const link = target.closest('a');
-      if (!link) return;
-      
-      const href = link.getAttribute('href');
-      if (!href) return;
-      
+    // Check if current URL is on the blocklist during active focus session
+    function checkIfCurrentSiteBlocked() {
       try {
-        const url = new URL(href, window.location.origin);
-        const domain = url.hostname.toLowerCase();
+        if (!blockedSites || blockedSites.length === 0) return;
         
-        const isBlocked = blockedDomains.some(blockedDomain => {
+        // Check current domain
+        const currentDomain = window.location.hostname.toLowerCase();
+        
+        // Check if the current domain is blocked
+        const isBlocked = blockedSites.some(site => {
+          const domain = site.domain.toLowerCase();
+          return currentDomain === domain || currentDomain.endsWith(`.${domain}`);
+        });
+        
+        if (isBlocked) {
+          setShowBlockPage(true);
+        }
+      } catch (error) {
+        console.error("Error checking blocked status:", error);
+      }
+    }
+    
+    // Check on mount and when focus mode changes
+    if (isBlockingActive) {
+      checkIfCurrentSiteBlocked();
+    } else {
+      setShowBlockPage(false);
+    }
+    
+    // Listen for tab visibility changes
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isBlockingActive, blockedSites]);
+  
+  // Block attempts to navigate to blocked sites
+  useEffect(() => {
+    if (!isBlockingActive || !blockedSites || blockedSites.length === 0) return;
+    
+    const blockNavigation = (e: MouseEvent) => {
+      try {
+        // Get the clicked element
+        const target = e.target as HTMLElement;
+        
+        // Find the closest anchor tag
+        const link = target.closest('a');
+        if (!link) return;
+        
+        // Get the URL
+        const href = link.getAttribute('href');
+        if (!href) return;
+        
+        // Try to parse the URL (could be relative)
+        let url;
+        try {
+          url = new URL(href, window.location.origin);
+        } catch {
+          // Not a valid URL, probably a route change within the app
+          return;
+        }
+        
+        // Check if the URL's domain is blocked
+        const domain = url.hostname.toLowerCase();
+        const isBlocked = blockedSites.some(site => {
+          const blockedDomain = site.domain.toLowerCase();
           return domain === blockedDomain || domain.endsWith(`.${blockedDomain}`);
         });
         
         if (isBlocked) {
           e.preventDefault();
-          setShowBlockOverlay(true);
+          setShowBlockPage(true);
         }
       } catch (error) {
-        // URL parsing failed, might be a relative URL
+        console.error("Error in blockNavigation:", error);
       }
-    }
+    };
     
+    // Add the click handler with capture phase to catch clicks before they're processed
     document.addEventListener('click', blockNavigation, true);
-    return () => document.removeEventListener('click', blockNavigation, true);
-  }, [isAuthenticated, isActiveSession, blockedDomains]);
+    
+    return () => {
+      document.removeEventListener('click', blockNavigation, true);
+    };
+  }, [isBlockingActive, blockedSites]);
   
-  return showBlockOverlay ? (
-    <SiteBlockedOverlay 
-      domain={window.location.hostname} 
-      onClose={() => setShowBlockOverlay(false)} 
-    />
-  ) : null;
+  // Render the block page during active focus sessions when blocked
+  return showBlockPage && isBlockingActive ? <BlockPage /> : null;
 }
 
 function App() {
