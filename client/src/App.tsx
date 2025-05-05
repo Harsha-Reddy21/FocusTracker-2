@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ import SettingsPage from "@/pages/settings-page";
 import SessionHistoryPage from "@/pages/session-history-page";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider } from "./hooks/use-auth";
+import { SiteBlockedOverlay } from "@/components/site-blocked-overlay";
 
 function Router() {
   return (
