@@ -54,8 +54,13 @@ export function FocusBlockerManager() {
 
     if (activeSession) {
       console.log("Active session found:", activeSession);
+      // Convert to ISO string if needed
+      const startTimeString = typeof activeSession.startTime === 'string' 
+        ? activeSession.startTime 
+        : new Date(activeSession.startTime).toISOString();
+      
       setActiveSession({
-        startTime: activeSession.startTime,
+        startTime: startTimeString,
         isActive: true
       });
     } else {

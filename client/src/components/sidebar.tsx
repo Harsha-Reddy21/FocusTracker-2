@@ -1,6 +1,6 @@
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Timer, Ban, History, BarChart3 } from "lucide-react";
+import { Timer, Ban, History, BarChart3, Shield } from "lucide-react";
 import { RecentSessionsList } from "@/components/recent-sessions-list";
 
 export function Sidebar() {
@@ -11,6 +11,7 @@ export function Sidebar() {
     { icon: Ban, text: "Blocklist", href: "/blocklist" },
     { icon: History, text: "Session History", href: "/history" },
     { icon: BarChart3, text: "Analytics", href: "/analytics" },
+    { icon: Shield, text: "Browser Extension", href: "/extension" },
   ];
 
   return (
