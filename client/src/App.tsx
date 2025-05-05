@@ -12,6 +12,7 @@ import BlocklistPage from "@/pages/blocklist-page";
 import AnalyticsPage from "@/pages/analytics-page";
 import SettingsPage from "@/pages/settings-page";
 import SessionHistoryPage from "@/pages/session-history-page";
+import BrowserExtensionPage from "@/pages/browser-extension-page";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider } from "./hooks/use-auth";
 import { FocusModeManager } from "@/components/focus-mode-manager";
@@ -25,6 +26,7 @@ function Router() {
       <ProtectedRoute path="/analytics" component={AnalyticsPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />
       <ProtectedRoute path="/history" component={SessionHistoryPage} />
+      <Route path="/extension" component={BrowserExtensionPage} />
       <Route component={NotFound} />
     </Switch>
   );

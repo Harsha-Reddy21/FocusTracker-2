@@ -5,6 +5,7 @@ import { setupAuth } from "./auth";
 import { insertBlockedSiteSchema, insertSessionSchema, updateSessionSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
+import { downloadExtension, checkExtensionAvailability } from "./browser-extension";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication
@@ -185,6 +186,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to get session stats" });
     }
   });
+  
+  // Browser extension routes
+  app.get("/api/extension/download", downloadExtension);
+  app.get("/api/extension/info", checkExtensionAvailability);
 
   // Create HTTP server
   const httpServer = createServer(app);
