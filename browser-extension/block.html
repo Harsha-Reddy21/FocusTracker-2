@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site Blocked - FocusFlow</title>
+  <style>
+    :root {
+      --primary: #0070f3;
+      --background: #f9fafb;
+      --foreground: #111827;
+      --muted: #6b7280;
+      --red: #ef4444;
+      --red-light: #fee2e2;
+      --amber: #f59e0b;
+      --green: #22c55e;
+      --blue: #3b82f6;
+      --card-bg: white;
+      --card-border: #e5e7eb;
+      --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      --button-bg: #f3f4f6;
+      --button-text: #111827;
+      --button-hover-bg: #e5e7eb;
+      --primary-button-bg: #0070f3;
+      --primary-button-text: white;
+      --primary-button-hover-bg: #0059C1;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #111827;
+        --foreground: #f9fafb;
+        --muted: #9ca3af;
+        --red-light: #7f1d1d;
+        --card-bg: #1e293b;
+        --card-border: #334155;
+        --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+        --button-bg: #334155;
+        --button-text: #f9fafb;
+        --button-hover-bg: #475569;
+      }
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--background);
+      color: var(--foreground);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+    
+    .container {
+      max-width: 500px;
+      width: 100%;
+    }
+    
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+    }
+    
+    .card-header {
+      background-color: var(--red);
+      color: white;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .card-header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    
+    .card-body {
+      padding: 1.5rem;
+    }
+    
+    .site-blocked-icon {
+      width: 64px;
+      height: 64px;
+      background-color: var(--red-light);
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1rem auto;
+    }
+    
+    .site-blocked-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+    
+    .site-blocked-domain {
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    
+    .site-blocked-message {
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .timer-container {
+      background-color: var(--button-bg);
+      padding: 1rem;
+      border-radius: 6px;
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .timer-label {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    
+    .timer-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      font-family: monospace;
+    }
+    
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .button {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      text-align: center;
+      transition: background-color 150ms ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    
+    .button-secondary {
+      background-color: var(--button-bg);
+      color: var(--button-text);
+    }
+    
+    .button-secondary:hover {
+      background-color: var(--button-hover-bg);
+    }
+    
+    .button-primary {
+      background-color: var(--primary-button-bg);
+      color: var(--primary-button-text);
+    }
+    
+    .button-primary:hover {
+      background-color: var(--primary-button-hover-bg);
+    }
+    
+    .button-danger {
+      background-color: var(--red);
+      color: white;
+    }
+    
+    .button-danger:hover {
+      background-color: #dc2626;
+    }
+    
+    .footer-message {
+      margin-top: 1rem;
+      font-size: 0.875rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    
+    .logo {
+      margin-top: 2rem;
+      text-align: center;
+    }
+    
+    .logo-text {
+      font-weight: 700;
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      justify-content: center;
+      color: var(--foreground);
+    }
+    
+    .logo-icon {
+      width: 20px;
+      height: 20px;
+      background-color: var(--primary);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+          <path d="M12 9v4"></path>
+          <path d="M12 17h.01"></path>
+        </svg>
+        <h1>Site Blocked</h1>
+      </div>
+      
+      <div class="card-body">
+        <div class="site-blocked-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        
+        <h2 class="site-blocked-title">Focus Session Active</h2>
+        <p class="site-blocked-domain" id="domain-name"></p>
+        <p class="site-blocked-message">
+          This site is currently blocked to help you stay focused. You can access it once your focus session ends.
+        </p>
+        
+        <div class="timer-container">
+          <div class="timer-label">Time remaining in focus session</div>
+          <div class="timer-value" id="time-remaining">25:00</div>
+        </div>
+        
+        <div class="button-group">
+          <button class="button button-secondary" id="go-back-button">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m12 19-7-7 7-7"></path>
+              <path d="M19 12H5"></path>
+            </svg>
+            Return to Previous Page
+          </button>
+          
+          <button class="button button-primary" id="go-to-focusflow">
+            Go to FocusFlow Dashboard
+          </button>
+          
+          <button class="button button-danger" id="end-session-button">
+            End Focus Session
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="footer-message">
+      Blocking managed by FocusFlow Browser Extension
+    </div>
+    
+    <div class="logo">
+      <div class="logo-text">
+        <div class="logo-icon"></div>
+        FocusFlow
+      </div>
+    </div>
+  </div>
+
+  <script src="block.js"></script>
+</body>
+</html>
