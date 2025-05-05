@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ArrowLeft, Clock } from "lucide-react";
 import { formatTime } from "@/lib/utils";
-import { usePomodoro } from "@/hooks/use-pomodoro";
 
 export function BlockPage() {
   const { timerState, timerMode, timeLeft } = usePomodoro();

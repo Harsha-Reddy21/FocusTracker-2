@@ -141,11 +141,13 @@ function App() {
     <ThemeProvider defaultTheme="light" storageKey="focus-flow-theme">
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-            <WebsiteBlocker />
-          </TooltipProvider>
+          <PomodoroBlockingProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Router />
+              <WebsiteBlocker />
+            </TooltipProvider>
+          </PomodoroBlockingProvider>
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
