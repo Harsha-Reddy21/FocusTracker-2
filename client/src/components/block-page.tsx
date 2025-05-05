@@ -4,7 +4,8 @@ import { AlertTriangle, ArrowLeft, Clock } from "lucide-react";
 import { formatTime } from "@/lib/utils";
 
 export function BlockPage() {
-  const { timerState, timerMode, timeLeft } = usePomodoro();
+  // Since we're no longer using usePomodoro, we'll hardcode some values
+  const [timeLeft, setTimeLeft] = useState(1500); // 25 minutes in seconds
   const [blockedSites, setBlockedSites] = useState<string[]>([]);
   const [showWarning, setShowWarning] = useState(true);
   
@@ -45,7 +46,7 @@ export function BlockPage() {
               <div className="flex items-center gap-2">
                 <Clock size={18} className="text-muted-foreground" />
                 <span className="font-medium">
-                  {timerMode === "work" ? "Work session" : "Break"} in progress
+                  Work session in progress
                 </span>
               </div>
               <span className="font-mono bg-background px-2 py-1 rounded text-sm">
