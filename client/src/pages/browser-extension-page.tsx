@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 
+import { Layout } from "@/components/layout";
+
 export default function BrowserExtensionPage() {
   // Download handler
   const handleDownload = () => {
@@ -12,7 +14,8 @@ export default function BrowserExtensionPage() {
   };
   
   return (
-    <div className="container max-w-5xl py-8 space-y-8">
+    <Layout>
+      <div className="container max-w-5xl py-8 space-y-8">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">FocusFlow Browser Extension</h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -249,5 +252,6 @@ export default function BrowserExtensionPage() {
         </div>
       </div>
     </div>
+    </Layout>
   );
 }

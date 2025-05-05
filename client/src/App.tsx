@@ -26,7 +26,7 @@ function Router() {
       <ProtectedRoute path="/analytics" component={AnalyticsPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />
       <ProtectedRoute path="/history" component={SessionHistoryPage} />
-      <Route path="/extension" component={BrowserExtensionPage} />
+      <ProtectedRoute path="/extension" component={BrowserExtensionPage} />
       <Route component={NotFound} />
     </Switch>
   );
