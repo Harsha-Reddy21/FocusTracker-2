@@ -118,12 +118,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
+      console.log("Session data received:", req.body);
       const sessionData = { ...req.body, userId: req.user.id };
+      console.log("Session data with userId:", sessionData);
+      
       const validatedData = insertSessionSchema.parse(sessionData);
+      console.log("Validated session data:", validatedData);
+      
       const session = await storage.createSession(validatedData);
       res.status(201).json(session);
     } catch (error) {
       if (error instanceof ZodError) {
+        console.error("Zod validation error:", error.errors);
         const validationError = fromZodError(error);
         return res.status(400).json({ message: validationError.message });
       }
@@ -136,6 +142,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
+      console.log("Update session data received:", req.body);
+      
       const sessionId = parseInt(req.params.id);
       if (isNaN(sessionId)) {
         return res.status(400).json({ message: "Invalid session ID" });
@@ -151,10 +159,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const validatedData = updateSessionSchema.partial().parse(req.body);
+      console.log("Validated update data:", validatedData);
+      
       const updatedSession = await storage.updateSession(sessionId, validatedData);
       res.json(updatedSession);
     } catch (error) {
       if (error instanceof ZodError) {
+        console.error("Zod validation error:", error.errors);
         const validationError = fromZodError(error);
         return res.status(400).json({ message: validationError.message });
       }
